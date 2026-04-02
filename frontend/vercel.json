@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://your-backend-app.onrender.com/api/$1"
+    },
+    {
+      "source": "/docs",
+      "destination": "https://your-backend-app.onrender.com/docs"
+    },
+    {
+      "source": "/openapi.json",
+      "destination": "https://your-backend-app.onrender.com/openapi.json"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+INFO:     Started server process [23615]
+INFO:     Waiting for application startup.
+2026-03-31 20:17:05 | INFO | app.main | Started Job Agent API (env=development)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:49904 - "POST /api/auth/login HTTP/1.1" 401 Unauthorized
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-03-31 20:17:09 | INFO | app.main | Shutdown Job Agent API
+INFO:     Application shutdown complete.
+INFO:     Finished server process [23615]

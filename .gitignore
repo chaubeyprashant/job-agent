@@ -1,0 +1,14 @@
+.venv/
+venv/
+.python-version
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.env
+*.db
+*.sqlite3
+output/
+*.pdf
+.DS_Store
+frontend/node_modules/

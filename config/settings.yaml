@@ -1,0 +1,33 @@
+# Default application settings (override via environment variables — see app/config.py)
+app:
+  name: "Job Agent API"
+  log_level: "INFO"
+
+paths:
+  templates_dir: "templates"
+  data_dir: "data"
+  output_dir: "output"
+
+matching:
+  weight_skill_overlap: 0.4
+  weight_keyword_match: 0.35
+  weight_experience_relevance: 0.25
+
+linkedin_automation:
+  max_retries: 3
+  retry_delay_seconds: 2.0
+  navigation_timeout_ms: 60000
+  action_timeout_ms: 15000
+
+pdf:
+  format: "A4"
+  print_background: true
+
+job_parser:
+  max_keywords: 40
+  max_responsibility_bullets: 12
+
+# Gemini (optional) — prefer APP_GEMINI_API_KEY in .env for secrets
+# gemini:
+#   model: "gemini-2.0-flash"
+#   temperature: 0.35

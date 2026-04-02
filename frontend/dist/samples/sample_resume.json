@@ -1,0 +1,63 @@
+{
+  "basics": {
+    "name": "Alex Rivera",
+    "headline": "Senior Backend Engineer",
+    "summary": "Backend engineer focused on reliable APIs, data pipelines, and cloud-native systems. Enjoys clear interfaces between services and measurable operational outcomes.",
+    "email": "alex.rivera@example.com",
+    "phone": "+1 415 555 0100",
+    "location": "San Francisco, CA",
+    "links": ["https://www.linkedin.com/in/example", "https://github.com/example"]
+  },
+  "skills": {
+    "primary": ["Python", "FastAPI", "PostgreSQL", "System design", "REST APIs"],
+    "secondary": ["Docker", "Kubernetes", "Kafka", "Redis", "CI/CD"],
+    "tools": ["Git", "Linux", "Terraform", "Prometheus", "Grafana"]
+  },
+  "experience": [
+    {
+      "company": "Northwind Labs",
+      "title": "Senior Software Engineer",
+      "location": "Remote",
+      "start": "2021-03",
+      "end": "Present",
+      "highlights": [
+        "Led design and delivery of high-throughput ingestion APIs using Python and FastAPI.",
+        "Reduced p99 latency by optimizing SQL and introducing Redis-backed caching.",
+        "Partnered with product and SRE to define SLOs and on-call runbooks."
+      ]
+    },
+    {
+      "company": "Contoso Analytics",
+      "title": "Software Engineer",
+      "location": "Seattle, WA",
+      "start": "2018-06",
+      "end": "2021-02",
+      "highlights": [
+        "Built ETL jobs and data quality checks for warehouse pipelines.",
+        "Implemented feature flags and gradual rollout for risky migrations."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Observability Starter Kit",
+      "description": "Templates for metrics, logs, and tracing in Python services.",
+      "tech": ["Python", "OpenTelemetry", "Prometheus"],
+      "highlights": ["Documented golden signals dashboards for small teams."]
+    },
+    {
+      "name": "Schema Migration Toolkit",
+      "description": "Safe patterns for zero-downtime database changes.",
+      "tech": ["PostgreSQL", "Python"],
+      "highlights": ["Automated expand/contract workflow for column changes."]
+    }
+  ],
+  "education": [
+    {
+      "institution": "State University",
+      "degree": "B.S.",
+      "field": "Computer Science",
+      "end": "2018"
+    }
+  ]
+}

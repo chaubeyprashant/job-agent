@@ -1,0 +1,18 @@
+Senior Backend Engineer — Platform Team
+
+We are hiring a Senior Backend Engineer to build and operate APIs that power our customer-facing platform. You will work with a collaborative team shipping reliable services on AWS.
+
+Requirements:
+- Strong Python and experience with FastAPI or similar frameworks
+- Solid SQL skills (PostgreSQL preferred) and performance tuning
+- Experience with Docker, Kubernetes, and CI/CD
+- Familiarity with Kafka or similar streaming systems
+
+Nice to have:
+- Terraform or other IaC
+- OpenTelemetry / observability tooling
+
+Responsibilities:
+- Design and implement REST and event-driven integrations
+- Improve reliability, monitoring, and on-call readiness
+- Mentor engineers and participate in architecture reviews
