@@ -1,0 +1,30 @@
+# Build the Vite app from ./frontend (paths below are relative to [build].base).
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"
+
+# Proxy API requests to the Render backend
+[[redirects]]
+  from = "/api/*"
+  to = "https://job-agent-mtwe.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/docs"
+  to = "https://job-agent-mtwe.onrender.com/docs"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/openapi.json"
+  to = "https://job-agent-mtwe.onrender.com/openapi.json"
+  status = 200
+  force = true
+
+# SPA fallback — must be LAST
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -60,8 +60,24 @@ function PdfViewerModal({
             </svg>
           </button>
         </div>
-        <div className="flex-1 bg-surface-950">
-          <iframe src={url} className="h-full w-full border-none" title="PDF Preview" />
+        <div className="min-h-0 flex-1 bg-surface-950">
+          <object
+            data={url}
+            type="application/pdf"
+            className="h-full w-full border-none"
+            aria-label="PDF Preview"
+          >
+            <div className="flex h-full min-h-[12rem] flex-col items-center justify-center gap-3 p-6 text-center text-sm text-ink-300">
+              <p>This browser does not show PDFs inline.</p>
+              <a
+                href={url}
+                download="resume.pdf"
+                className="rounded-xl border border-brand/30 bg-brand/10 px-4 py-2 font-semibold text-brand-glow hover:bg-brand/20"
+              >
+                Download PDF
+              </a>
+            </div>
+          </object>
         </div>
       </div>
     </div>

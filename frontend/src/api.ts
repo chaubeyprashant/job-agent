@@ -99,10 +99,20 @@ export async function renderLatexToPdf(latex: string): Promise<Blob> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ latex }),
   });
+  const ct = (r.headers.get("content-type") || "").toLowerCase();
   if (!r.ok) {
     const text = await r.text();
     const detail = formatApiErrorBody(text) || r.statusText;
     throw new Error(detail);
   }
-  return await r.blob();
+  if (ct.includes("text/html")) {
+    const text = await r.text();
+    throw new Error(
+      text.includes("<!DOCTYPE")
+        ? "Got the app HTML instead of a PDF. Check Netlify /api/* proxy rules and redeploy."
+        : "Server returned HTML instead of a PDF."
+    );
+  }
+  const buf = await r.arrayBuffer();
+  return new Blob([buf], { type: "application/pdf" });
 }
