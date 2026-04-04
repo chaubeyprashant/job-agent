@@ -1,0 +1,7 @@
+# Proxy API requests to the Render backend
+/api/*  https://job-agent-mtwe.onrender.com/api/:splat  200
+/docs   https://job-agent-mtwe.onrender.com/docs         200
+/openapi.json  https://job-agent-mtwe.onrender.com/openapi.json  200
+
+# SPA fallback — must be LAST
+/*      /index.html   200
