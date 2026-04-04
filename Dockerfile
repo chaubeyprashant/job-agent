@@ -2,13 +2,16 @@ FROM python:3.11-slim
 
 # Install system dependencies required for building and Playwright
 # texlive-latex-extra provides moderncv.cls and many CV/bibliography packages used by real resumes.
-RUN apt-get update && apt-get install -y \
+# texlive-fonts-extra provides icons (fontawesome5), symbols, and additional font families.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     texlive-latex-base \
     texlive-fonts-recommended \
     texlive-latex-recommended \
     texlive-latex-extra \
+    texlive-fonts-extra \
+    lmodern \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

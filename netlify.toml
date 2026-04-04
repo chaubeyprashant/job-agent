@@ -3,6 +3,9 @@
 # For long requests (e.g. LaTeX→PDF), set Netlify env VITE_API_BASE_URL to your Render
 # origin (https://….onrender.com) so the browser calls Render directly. Netlify’s proxy
 # to external URLs times out at ~26s and returns 504.
+#
+# Set VITE_SITE_URL to your site origin (https://….netlify.app or custom domain), no trailing
+# slash — used for canonical URL, Open Graph, robots.txt, and sitemap.xml at build time.
 [build]
   base = "frontend"
   command = "npm run build"
