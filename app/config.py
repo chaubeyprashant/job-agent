@@ -52,10 +52,7 @@ class AppSettings(BaseSettings):
     data_dir: Path = Field(default=Path("data"))
     output_dir: Path = Field(default=Path("output"))
 
-    database_url: str = Field(
-        default="sqlite+aiosqlite:///./data/app.db",
-        description="SQLAlchemy async URL; swap for PostgreSQL when ready.",
-    )
+
 
     matching_weight_skill_overlap: float = Field(default=0.4, ge=0.0, le=1.0)
     matching_weight_keyword_match: float = Field(default=0.35, ge=0.0, le=1.0)
@@ -80,23 +77,17 @@ class AppSettings(BaseSettings):
         description="Comma-separated browser origins allowed by CORS.",
     )
 
-    jwt_secret: str = Field(
-        default="dev-only-change-with-APP_JWT_SECRET",
-        description="HS256 signing key; set APP_JWT_SECRET in production.",
-    )
-    jwt_algorithm: str = Field(default="HS256")
-    jwt_access_token_expire_minutes: int = Field(default=60 * 24 * 7, ge=5, le=60 * 24 * 365)
-    password_min_length: int = Field(default=8, ge=6, le=128)
 
-    gemini_api_key: str | None = Field(
+
+    groq_api_key: str | None = Field(
         default=None,
-        description="Google AI Studio API key for resume tailoring (optional).",
+        description="Groq Cloud API key for resume tailoring (optional).",
     )
-    gemini_model: str = Field(
-        default="gemini-2.0-flash",
-        description="Gemini model id (e.g. gemini-2.0-flash, gemini-1.5-flash).",
+    groq_model: str = Field(
+        default="llama-3.3-70b-versatile",
+        description="Groq model id (e.g. llama-3.3-70b-versatile).",
     )
-    gemini_temperature: float = Field(default=0.35, ge=0.0, le=2.0)
+    groq_temperature: float = Field(default=0.35, ge=0.0, le=2.0)
 
     @field_validator("templates_dir", "data_dir", "output_dir", mode="before")
     @classmethod
@@ -116,7 +107,7 @@ def _flatten_yaml_for_settings(yaml_data: dict[str, Any]) -> dict[str, Any]:
     li = yaml_data.get("linkedin_automation") or {}
     pdf = yaml_data.get("pdf") or {}
     jp = yaml_data.get("job_parser") or {}
-    gemini = yaml_data.get("gemini") or {}
+    groq = yaml_data.get("groq") or {}
     return {
         "app_name": app.get("name"),
         "log_level": app.get("log_level"),
@@ -138,8 +129,8 @@ def _flatten_yaml_for_settings(yaml_data: dict[str, Any]) -> dict[str, Any]:
         "job_parser_max_responsibility_bullets": jp.get(
             "max_responsibility_bullets"
         ),
-        "gemini_model": gemini.get("model"),
-        "gemini_temperature": gemini.get("temperature"),
+        "groq_model": groq.get("model"),
+        "groq_temperature": groq.get("temperature"),
     }
 
 
@@ -153,12 +144,10 @@ def get_settings() -> AppSettings:
     yaml_path = _project_root() / "config" / "settings.yaml"
     raw = _load_yaml_defaults(yaml_path)
     flat = {k: v for k, v in _flatten_yaml_for_settings(raw).items() if v is not None}
-    # Allow DATABASE_URL style from hosting providers
-    if "APP_DATABASE_URL" not in os.environ and "DATABASE_URL" in os.environ:
-        os.environ["APP_DATABASE_URL"] = os.environ["DATABASE_URL"]
-    # Common alias for GEMINI_API_KEY
-    if "APP_GEMINI_API_KEY" not in os.environ and "GEMINI_API_KEY" in os.environ:
-        os.environ["APP_GEMINI_API_KEY"] = os.environ["GEMINI_API_KEY"]
+
+    # Common alias for GROQ_API_KEY
+    if "APP_GROQ_API_KEY" not in os.environ and "GROQ_API_KEY" in os.environ:
+        os.environ["APP_GROQ_API_KEY"] = os.environ["GROQ_API_KEY"]
     return AppSettings(**flat)
 
 

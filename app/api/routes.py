@@ -1,34 +1,30 @@
-"""REST API routes for parsing, tailoring, PDF generation, and apply automation."""
+"""REST API routes for parsing, tailoring, and apply automation."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse
 
 from app import __version__
 from app.api.deps import (
-    DbSession,
     JobParserDep,
-    MatchingServiceDep,
-    PdfServiceDep,
     ResumeServiceDep,
 )
 from app.automation.linkedin import apply_to_job
 from app.config import get_settings
-from app.models.database import ApplicationLog
 from app.schemas.api import (
     ApplyRequest,
     ApplyResponse,
-    GeneratePdfRequest,
-    GeneratePdfResponse,
     HealthResponse,
     ParseJobRequest,
     ParseJobResponse,
+    RenderLatexRequest,
     TailorResumeRequest,
     TailorResumeResponse,
 )
+from app.services.latex_compiler import compiler_service
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -57,7 +53,6 @@ async def tailor_resume(
     body: TailorResumeRequest,
     parser: JobParserDep,
     resume_svc: ResumeServiceDep,
-    matching: MatchingServiceDep,
 ) -> TailorResumeResponse:
     """
     Tailor a base resume to a job.
@@ -74,60 +69,19 @@ async def tailor_resume(
             detail="Provide `job` or `job_description`.",
         )
 
-    tailored = await resume_svc.tailor_resume(
-        body.base_resume,
+    tailored_latex = await resume_svc.tailor_resume(
+        body.base_latex,
         job_data,
         job_description=body.job_description,
         force_heuristic=body.force_heuristic,
     )
-    score = matching.calculate_score(job_data, tailored)
-    return TailorResumeResponse(resume=tailored, match_score=score)
-
-
-@router.post("/generate-pdf", response_model=GeneratePdfResponse)
-async def generate_pdf(
-    body: GeneratePdfRequest,
-    pdf_svc: PdfServiceDep,
-) -> GeneratePdfResponse:
-    """Render resume JSON to PDF and return server path."""
-    path = await pdf_svc.generate_pdf(body.resume, body.filename)
-    name = path.name
-    download_url = f"/api/files/{name}"
-    return GeneratePdfResponse(
-        pdf_path=str(path),
-        filename=name,
-        download_url=download_url,
-    )
-
-
-@router.get("/files/{filename}")
-async def download_generated_pdf(filename: str) -> FileResponse:
-    """
-    Download a PDF from the configured output directory (basename only, ``.pdf``).
-    """
-    settings = get_settings()
-    safe_name = Path(filename).name
-    if not safe_name.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
-    candidate = (settings.output_dir / safe_name).resolve()
-    root = settings.output_dir.resolve()
-    try:
-        candidate.relative_to(root)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail="File not found.") from exc
-    if not candidate.is_file():
-        raise HTTPException(status_code=404, detail="File not found.")
-    return FileResponse(
-        path=candidate,
-        filename=safe_name,
-        media_type="application/pdf",
-    )
+    
+    return TailorResumeResponse(tailored_latex=tailored_latex, match_score=None)
 
 
 @router.post("/apply", response_model=ApplyResponse)
 async def apply(
     body: ApplyRequest,
-    session: DbSession,
 ) -> ApplyResponse:
     """
     Run LinkedIn Easy Apply automation (requires local Playwright browsers).
@@ -140,14 +94,7 @@ async def apply(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    log = ApplicationLog(
-        job_url=body.job_url,
-        resume_path=str(resume_fs),
-        success=bool(result.get("success")),
-        message=str(result.get("message", "")),
-    )
-    session.add(log)
-    await session.commit()
+
 
     logger.info(
         "Apply job_url=%s success=%s",
@@ -169,7 +116,21 @@ async def config_paths() -> dict[str, str | bool]:
         "templates_dir": str(s.templates_dir),
         "data_dir": str(s.data_dir),
         "output_dir": str(s.output_dir),
-        "database_url_scheme": s.database_url.split(":")[0],
-        "gemini_configured": bool((s.gemini_api_key or "").strip()),
-        "gemini_model": s.gemini_model,
+        "groq_configured": bool((s.groq_api_key or "").strip()),
+        "groq_model": s.groq_model,
     }
+
+
+@router.post("/latex-to-pdf")
+async def render_pdf(body: RenderLatexRequest) -> Response:
+    """Compile LaTeX to PDF and return bytes."""
+    try:
+        pdf_bytes = await compiler_service.compile_to_pdf(body.latex)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "inline; filename=resume.pdf"},
+        )
+    except Exception as exc:
+        logger.error("Failed to render PDF: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

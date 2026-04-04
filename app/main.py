@@ -13,11 +13,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
-from app.api.auth_routes import router as auth_router
 from app.api.routes import router
-from app.api.user_routes import router as user_router
-from app.config import _project_root, get_settings
-from app.models.database import init_db
+from app.config import _project_root, clear_settings_cache, get_settings
 from app.schemas.api import HealthResponse
 from app.utils.logging import get_logger, setup_logging
 
@@ -26,13 +23,14 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: logging, directories, database schema."""
+    """Startup: logging, directories."""
+    clear_settings_cache()   # always re-read .env on startup
     settings = get_settings()
     setup_logging(settings.log_level)
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.output_dir.mkdir(parents=True, exist_ok=True)
     settings.templates_dir.mkdir(parents=True, exist_ok=True)
-    await init_db()
+
     logger.info("Started %s (env=%s)", settings.app_name, settings.env)
     yield
     logger.info("Shutdown %s", settings.app_name)
@@ -61,8 +59,6 @@ def create_app() -> FastAPI:
         """Backward-compatible health check at root (e.g. load balancers)."""
         return HealthResponse(status="ok", version=__version__)
 
-    app.include_router(auth_router, prefix="/api")
-    app.include_router(user_router, prefix="/api")
     app.include_router(router, prefix="/api")
 
     dist = _project_root() / "frontend" / "dist"

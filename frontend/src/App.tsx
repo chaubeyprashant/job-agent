@@ -1,38 +1,14 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { JobParseResult, Resume, UserPublic } from "./api";
+import type { JobParseResult } from "./api";
 import {
   fetchHealth,
-  generatePdf,
-  getMe,
-  getMyResume,
-  getToken,
-  loginAccount,
-  optimizeSavedResume,
   parseJob,
-  putMyResume,
-  registerAccount,
-  setToken,
+  renderLatexToPdf,
   submitApply,
   tailorResume,
-  uploadResumeFile,
 } from "./api";
 
 type LoadState = "idle" | "loading" | "ok" | "error";
-
-function Chip({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs font-medium text-ink-200">
-      {children}
-    </span>
-  );
-}
-
-/** Name from server-backed resume JSON (for “what optimize uses” clarity). */
-function resumeBasicsName(resume: Resume | null): string | null {
-  if (!resume?.basics) return null;
-  const raw = (resume.basics as Record<string, unknown>).name;
-  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
-}
 
 function Panel({
   title,
@@ -62,37 +38,105 @@ function Panel({
   );
 }
 
+function PdfViewerModal({
+  url,
+  onClose,
+}: {
+  url: string | null;
+  onClose: () => void;
+}) {
+  if (!url) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="relative flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-surface-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+          <h3 className="font-display text-xl font-bold text-ink-50">PDF Preview</h3>
+          <button
+            onClick={onClose}
+            className="rounded-xl bg-white/5 p-2 text-ink-300 transition hover:bg-white/10 hover:text-ink-50"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 bg-surface-950">
+          <iframe src={url} className="h-full w-full border-none" title="PDF Preview" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback for older browsers
+      const el = document.createElement("textarea");
+      el.value = text;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    }
+  };
+  return (
+    <button
+      type="button"
+      className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+        copied
+          ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+          : "border-brand/30 bg-brand/10 text-brand-glow hover:bg-brand/20"
+      }`}
+      onClick={handleCopy}
+    >
+      {copied ? (
+        <>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          Copied!
+        </>
+      ) : (
+        <>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          Copy LaTeX
+        </>
+      )}
+    </button>
+  );
+}
+
 export function App() {
   const [apiOk, setApiOk] = useState<LoadState>("idle");
   const [apiVersion, setApiVersion] = useState<string>("");
-  const [geminiOn, setGeminiOn] = useState<boolean | null>(null);
+  const [groqOn, setGroqOn] = useState<boolean | null>(null);
 
-  const [user, setUser] = useState<UserPublic | null>(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [authBusy, setAuthBusy] = useState(false);
-  const [savedResumeAt, setSavedResumeAt] = useState<string | null>(null);
-  /** Last known name from GET/PUT/upload — matches what /api/me/optimize tailors from. */
-  const [storedProfileName, setStoredProfileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [jobText, setJobText] = useState("");
   const [parsed, setParsed] = useState<JobParseResult | null>(null);
   const [parseBusy, setParseBusy] = useState(false);
 
-  const [resumeText, setResumeText] = useState("");
+  // Sync resume text to local storage
+  const [resumeText, setResumeText] = useState(() => localStorage.getItem("job_agent_resume") || "");
   const [resumeErr, setResumeErr] = useState<string | null>(null);
 
-  const [tailored, setTailored] = useState<Resume | null>(null);
+  const [tailored, setTailored] = useState<string | null>(null);
   const [matchScore, setMatchScore] = useState<number | null>(null);
   const [tailorBusy, setTailorBusy] = useState(false);
-  const [optimizeSavedBusy, setOptimizeSavedBusy] = useState(false);
 
-  const [pdfInfo, setPdfInfo] = useState<{
-    filename: string;
-    download_url: string | null;
-  } | null>(null);
+  // PDF Preview State
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
 
   const [applyUrl, setApplyUrl] = useState("");
@@ -103,27 +147,17 @@ export function App() {
   const [banner, setBanner] = useState<string | null>(null);
   const gradId = useId().replace(/:/g, "");
 
-  const canGeneratePdf = useMemo(() => {
-    if (tailored) return true;
-    try {
-      const data = JSON.parse(resumeText) as Resume;
-      return Boolean(data?.basics && data?.skills);
-    } catch {
-      return false;
-    }
-  }, [tailored, resumeText]);
-
-  /** Resume row exists on server (required to tailor from stored profile + job). */
-  const hasResumeStored = Boolean(user && savedResumeAt);
+  useEffect(() => {
+    localStorage.setItem("job_agent_resume", resumeText);
+  }, [resumeText]);
 
   const workflowSteps = useMemo(
     () => [
-      { label: "Sign in", done: Boolean(user) },
-      { label: "Store your resume", done: hasResumeStored },
+      { label: "Add your resume", done: resumeText.trim().length >= 50 },
       { label: "Paste job description", done: jobText.trim().length >= 30 },
       { label: "Get updated resume", done: Boolean(tailored) },
     ],
-    [user, hasResumeStored, jobText, tailored]
+    [resumeText, jobText, tailored]
   );
 
   const showError = useCallback((msg: string) => {
@@ -143,41 +177,13 @@ export function App() {
         const cfgRes = await fetch("/api/config/paths");
         if (cfgRes.ok && !cancelled) {
           const cfg = (await cfgRes.json()) as {
-            gemini_configured?: boolean;
-            gemini_model?: string;
+            groq_configured?: boolean;
+            groq_model?: string;
           };
-          setGeminiOn(Boolean(cfg.gemini_configured));
+          setGroqOn(Boolean(cfg.groq_configured));
         }
       } catch {
         if (!cancelled) setApiOk("error");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!getToken()) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const me = await getMe();
-        if (cancelled) return;
-        setUser(me);
-        const mr = await getMyResume();
-        if (cancelled) return;
-        setSavedResumeAt(mr.updated_at);
-        setStoredProfileName(resumeBasicsName(mr.resume));
-        if (mr.resume) {
-          setResumeText(JSON.stringify(mr.resume, null, 2));
-          setResumeErr(null);
-        }
-      } catch {
-        setToken(null);
-        setUser(null);
-        setSavedResumeAt(null);
-        setStoredProfileName(null);
       }
     })();
     return () => {
@@ -189,151 +195,52 @@ export function App() {
     try {
       const [jobR, resR] = await Promise.all([
         fetch("/samples/sample_job.txt"),
-        fetch("/samples/sample_resume.json"),
+        fetch("/samples/sample_resume.tex"),
       ]);
       setJobText(await jobR.text());
-      setResumeText(JSON.stringify(await resR.json(), null, 2));
-      setResumeErr(null);
+      setResumeText(await resR.text());
       setParsed(null);
       setTailored(null);
       setMatchScore(null);
-      setPdfInfo(null);
     } catch {
       showError("Could not load sample files. Check that the dev server is running.");
     }
   };
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!authEmail.trim() || !authPassword) {
-      showError("Enter email and password.");
-      return;
+  const closePdf = useCallback(() => {
+    if (pdfUrl) {
+      URL.revokeObjectURL(pdfUrl);
+      setPdfUrl(null);
     }
-    if (authMode === "register" && authPassword.length < 8) {
-      showError("Password must be at least 8 characters (API requirement).");
-      return;
-    }
-    setAuthBusy(true);
+  }, [pdfUrl]);
+
+  const handlePreview = async (latex: string) => {
+    if (!latex.trim()) return;
+    setPdfBusy(true);
     setBanner(null);
     try {
-      const fn = authMode === "register" ? registerAccount : loginAccount;
-      const { access_token } = await fn(authEmail.trim(), authPassword);
-      setToken(access_token);
-      const me = await getMe();
-      setUser(me);
-      setAuthPassword("");
-      const mr = await getMyResume();
-      setSavedResumeAt(mr.updated_at);
-      setStoredProfileName(resumeBasicsName(mr.resume));
-      if (mr.resume) {
-        setResumeText(JSON.stringify(mr.resume, null, 2));
-        setResumeErr(null);
-      }
+      const blob = await renderLatexToPdf(latex);
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
     } catch (err) {
-      showError(err instanceof Error ? err.message : "Authentication failed");
-      setToken(null);
-      setUser(null);
-      setStoredProfileName(null);
+      showError(err instanceof Error ? err.message : String(err));
     } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const handleLogout = () => {
-    setToken(null);
-    setUser(null);
-    setSavedResumeAt(null);
-    setStoredProfileName(null);
-    setAuthPassword("");
-  };
-
-  const handleSaveToAccount = async () => {
-    const base = parseResumeJson();
-    if (!base) return;
-    if (!user) {
-      showError("Sign in to save your resume to your account.");
-      return;
-    }
-    setAuthBusy(true);
-    try {
-      const mr = await putMyResume(base);
-      setSavedResumeAt(mr.updated_at);
-      setStoredProfileName(resumeBasicsName(mr.resume ?? base));
-      setBanner("Resume saved to your account.");
-      window.setTimeout(() => setBanner(null), 4000);
-    } catch (err) {
-      showError(err instanceof Error ? err.message : "Save failed");
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const handleLoadFromAccount = async () => {
-    if (!user) return;
-    setAuthBusy(true);
-    try {
-      const mr = await getMyResume();
-      setSavedResumeAt(mr.updated_at);
-      setStoredProfileName(resumeBasicsName(mr.resume));
-      if (mr.resume) {
-        setResumeText(JSON.stringify(mr.resume, null, 2));
-        setResumeErr(null);
-      } else {
-        showError("No resume stored yet. Paste JSON or upload a file.");
-      }
-    } catch (err) {
-      showError(err instanceof Error ? err.message : "Load failed");
-    } finally {
-      setAuthBusy(false);
+      setPdfBusy(false);
     }
   };
 
   const handleResumeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !user) return;
-    setAuthBusy(true);
+    if (!file) return;
     try {
-      const mr = await uploadResumeFile(file);
-      setSavedResumeAt(mr.updated_at);
-      setStoredProfileName(resumeBasicsName(mr.resume));
-      if (mr.resume) {
-        setResumeText(JSON.stringify(mr.resume, null, 2));
-        setResumeErr(null);
-      }
+      const text = await file.text();
+      setResumeText(text);
+      setResumeErr(null);
+      setBanner("Resume loaded from file.");
+      window.setTimeout(() => setBanner(null), 4000);
     } catch (err) {
-      showError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const handleOptimizeSaved = async () => {
-    if (!user) {
-      showError("Sign in or register first — we store your resume on your account.");
-      return;
-    }
-    if (!hasResumeStored) {
-      showError(
-        "Save your resume first: paste or upload JSON/PDF below, then click Save to account (or Upload)."
-      );
-      return;
-    }
-    if (!jobText.trim()) {
-      showError("Paste the full job description (step 3), then try again.");
-      return;
-    }
-    setOptimizeSavedBusy(true);
-    setBanner(null);
-    try {
-      const out = await optimizeSavedResume(jobText);
-      setTailored(out.resume);
-      setMatchScore(out.match_score);
-      setPdfInfo(null);
-    } catch (err) {
-      showError(err instanceof Error ? err.message : "Optimize failed");
-    } finally {
-      setOptimizeSavedBusy(false);
+      showError(err instanceof Error ? err.message : "Failed to read file");
     }
   };
 
@@ -354,24 +261,11 @@ export function App() {
     }
   };
 
-  const parseResumeJson = (): Resume | null => {
-    setResumeErr(null);
-    try {
-      const data = JSON.parse(resumeText) as Resume;
-      if (!data.basics || !data.skills) {
-        setResumeErr("Resume JSON must include basics and skills.");
-        return null;
-      }
-      return data;
-    } catch {
-      setResumeErr("Invalid JSON. Fix the resume payload.");
-      return null;
-    }
-  };
-
   const handleTailor = async () => {
-    const base = parseResumeJson();
-    if (!base) return;
+    if (!resumeText.trim()) {
+      showError("Add your resume LaTeX first.");
+      return;
+    }
     if (!jobText.trim()) {
       showError("Add a job description to tailor against.");
       return;
@@ -380,41 +274,15 @@ export function App() {
     setBanner(null);
     try {
       const out = await tailorResume({
-        base_resume: base,
+        base_latex: resumeText,
         job_description: jobText,
       });
-      setTailored(out.resume);
+      setTailored(out.tailored_latex);
       setMatchScore(out.match_score);
-      setPdfInfo(null);
     } catch (e) {
       showError(e instanceof Error ? e.message : "Tailor failed");
     } finally {
       setTailorBusy(false);
-    }
-  };
-
-  const handlePdf = async () => {
-    let source: Resume | null = tailored;
-    if (!source) {
-      try {
-        const data = JSON.parse(resumeText) as Resume;
-        if (!data.basics || !data.skills) throw new Error("missing fields");
-        source = data;
-      } catch {
-        showError("Fix resume JSON before generating a PDF.");
-        return;
-      }
-    }
-    setPdfBusy(true);
-    setBanner(null);
-    try {
-      const name = `resume-${Date.now()}.pdf`;
-      const out = await generatePdf(source, name);
-      setPdfInfo({ filename: out.filename, download_url: out.download_url });
-    } catch (e) {
-      showError(e instanceof Error ? e.message : "PDF generation failed");
-    } finally {
-      setPdfBusy(false);
     }
   };
 
@@ -435,11 +303,6 @@ export function App() {
     }
   };
 
-  const downloadHref =
-    pdfInfo?.download_url != null
-      ? `${window.location.origin}${pdfInfo.download_url}`
-      : null;
-
   return (
     <div className="bg-grid min-h-screen">
       <div className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:px-6 lg:px-8">
@@ -452,8 +315,8 @@ export function App() {
               Apply smarter, stay honest
             </h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-300">
-              Sign in → save your resume once → paste any job description → we update your
-              stored resume for that role (AI when Gemini is on) and you can export a PDF.
+              Paste or upload your LaTeX resume → paste any job description → we update your
+              resume for that role (AI when Gemini is on).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -481,16 +344,16 @@ export function App() {
                   ? "API unreachable"
                   : "Checking API…"}
             </span>
-            {geminiOn !== null && (
+            {groqOn !== null && (
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium ${
-                  geminiOn
+                  groqOn
                     ? "border-violet-500/30 bg-violet-500/10 text-violet-200"
                     : "border-white/10 bg-white/5 text-ink-400"
                 }`}
-                title="Gemini-powered tailoring when APP_GEMINI_API_KEY is set"
+                title="Groq-powered tailoring when APP_GROQ_API_KEY is set"
               >
-                Gemini {geminiOn ? "ON" : "off"}
+                Groq AI {groqOn ? "ON" : "off"}
               </span>
             )}
             <a
@@ -520,7 +383,7 @@ export function App() {
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-ink-400">
             Your flow
           </p>
-          <ol className="grid gap-3 sm:grid-cols-4">
+          <ol className="grid gap-3 sm:grid-cols-3">
             {workflowSteps.map((s, i) => (
               <li
                 key={s.label}
@@ -543,151 +406,12 @@ export function App() {
           </ol>
         </div>
 
-        <div className="mb-6">
-          <Panel title="1 · Account (save your profile here)" step="◆">
-            <p className="mb-4 text-sm text-ink-300">
-              We keep your resume on the server so you only paste a job next time. Upload a{" "}
-              <strong className="text-ink-200">PDF</strong> or <strong className="text-ink-200">JSON</strong>
-              , or type JSON in the editor below — then <strong className="text-ink-200">Save to account</strong>.
-            </p>
-            {!user ? (
-              <form
-                className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
-                onSubmit={handleAuthSubmit}
-              >
-                <div className="flex min-w-[200px] flex-1 flex-col gap-1">
-                  <label className="text-xs font-medium text-ink-400">Email</label>
-                  <input
-                    type="email"
-                    autoComplete="email"
-                    className="rounded-xl border border-white/10 bg-surface-900/80 px-3 py-2 text-sm text-ink-100 focus:border-brand/50 focus:outline-none focus:ring-1 focus:ring-brand/30"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                  />
-                </div>
-                <div className="flex min-w-[200px] flex-1 flex-col gap-1">
-                  <label className="text-xs font-medium text-ink-400">
-                    Password
-                    {authMode === "register" && (
-                      <span className="font-normal text-ink-500"> (min 8 characters)</span>
-                    )}
-                  </label>
-                  <input
-                    type="password"
-                    autoComplete={authMode === "register" ? "new-password" : "current-password"}
-                    className="rounded-xl border border-white/10 bg-surface-900/80 px-3 py-2 text-sm text-ink-100 focus:border-brand/50 focus:outline-none focus:ring-1 focus:ring-brand/30"
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    minLength={authMode === "register" ? 8 : undefined}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className={`rounded-xl px-4 py-2 text-sm font-medium text-ink-200 transition ${
-                      authMode === "login"
-                        ? "bg-brand/20 text-brand-glow"
-                        : "bg-white/5 hover:bg-white/10"
-                    }`}
-                    onClick={() => setAuthMode("login")}
-                  >
-                    Log in
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-xl px-4 py-2 text-sm font-medium text-ink-200 transition ${
-                      authMode === "register"
-                        ? "bg-brand/20 text-brand-glow"
-                        : "bg-white/5 hover:bg-white/10"
-                    }`}
-                    onClick={() => setAuthMode("register")}
-                  >
-                    Register
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={authBusy}
-                    className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-surface-900 shadow-lg shadow-brand/20 disabled:opacity-50"
-                  >
-                    {authBusy ? "…" : authMode === "register" ? "Create account" : "Sign in"}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                <p className="text-sm text-ink-200">
-                  Signed in as <strong>{user.email}</strong>
-                  {savedResumeAt && (
-                    <span className="ml-2 text-xs text-ink-400">
-                      · Resume saved{" "}
-                      {new Date(savedResumeAt).toLocaleString(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
-                      {storedProfileName && (
-                        <>
-                          {" "}
-                          · <strong className="text-ink-300">Profile on server:</strong>{" "}
-                          {storedProfileName}
-                        </>
-                      )}
-                    </span>
-                  )}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-ink-100 transition hover:bg-white/10 disabled:opacity-50"
-                    onClick={handleLoadFromAccount}
-                    disabled={authBusy}
-                  >
-                    Load from account
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-ink-100 transition hover:bg-white/10 disabled:opacity-50"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={authBusy}
-                  >
-                    Upload PDF / JSON
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-200 transition hover:bg-red-500/20"
-                    onClick={handleLogout}
-                  >
-                    Log out
-                  </button>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.json,application/pdf,application/json"
-                  className="hidden"
-                  onChange={handleResumeFile}
-                />
-              </div>
-            )}
-          </Panel>
-        </div>
-
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="flex flex-col gap-6">
-            <Panel title="2 · Your resume (we store this for you)" step={2}>
-              {user && !hasResumeStored && (
-                <div
-                  className="mb-3 rounded-xl border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-100"
-                  role="status"
-                >
-                  <strong className="text-sky-50">Next:</strong> add your resume (paste JSON,{" "}
-                  <strong>Upload PDF / JSON</strong>, or <strong>Load samples</strong>), then click{" "}
-                  <strong>Save to account</strong>. After that you can paste a job and update your
-                  resume for it.
-                </div>
-              )}
+            <Panel title="1 · Your resume (stored locally)" step={1}>
               <p className="mb-3 text-sm text-ink-300">
-                Edit JSON here or use <strong className="text-ink-200">Upload PDF / JSON</strong> in
-                the account bar — PDFs are converted automatically; review in the editor, then save.
+                Edit LaTeX here or use <strong className="text-ink-200">Upload .tex</strong>.
+                It is automatically saved to your browser's local storage.
               </p>
               <textarea
                 className="mb-2 min-h-[280px] w-full resize-y rounded-xl border border-white/10 bg-surface-900/80 px-4 py-3 font-mono text-xs leading-relaxed text-ink-100 focus:border-brand/50 focus:outline-none focus:ring-1 focus:ring-brand/30"
@@ -698,60 +422,40 @@ export function App() {
               {resumeErr && (
                 <p className="mb-2 text-sm text-red-300">{resumeErr}</p>
               )}
-              <div className="mb-3 flex flex-wrap gap-2">
-                {user && (
-                  <button
-                    type="button"
-                    className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-50"
-                    onClick={handleSaveToAccount}
-                    disabled={authBusy || !canGeneratePdf}
-                  >
-                    Save to account
-                  </button>
-                )}
-              </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                 <button
                   type="button"
-                  className="rounded-xl bg-gradient-to-r from-accent/90 to-amber-500/90 px-4 py-2.5 text-sm font-bold text-surface-900 shadow-lg shadow-amber-500/15 transition hover:brightness-110 disabled:opacity-50"
-                  onClick={handleTailor}
-                  disabled={tailorBusy}
+                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-ink-100 transition hover:bg-white/10"
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  {tailorBusy ? "Tailoring…" : "Tailor (editor JSON)"}
+                  Upload .tex
                 </button>
                 <button
                   type="button"
-                  className="rounded-xl border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand-glow transition hover:bg-brand/20 disabled:opacity-50"
-                  onClick={handleOptimizeSaved}
-                  disabled={optimizeSavedBusy || !user || !hasResumeStored}
-                  title={
-                    !user
-                      ? "Sign in first"
-                      : !hasResumeStored
-                        ? "Save your resume to your account first"
-                        : "Updates your stored resume using the job description (step 3)"
-                  }
+                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-ink-100 transition hover:bg-white/10"
+                  onClick={loadSamples}
                 >
-                  {optimizeSavedBusy
-                    ? "Updating resume…"
-                    : "Update resume for this job"}
+                  Load sample
+                </button>
+                <button
+                  type="button"
+                  disabled={pdfBusy || !resumeText.trim()}
+                  className="rounded-xl border border-brand/30 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand-glow transition hover:bg-brand/20 disabled:opacity-50"
+                  onClick={() => handlePreview(resumeText)}
+                >
+                  {pdfBusy ? "Compiling..." : "Preview PDF"}
                 </button>
               </div>
-              <p className="mt-2 text-xs text-ink-400">
-                <strong className="text-ink-300">Update resume for this job</strong> calls the API
-                with your <strong>saved server profile</strong>
-                {storedProfileName ? (
-                  <> ({storedProfileName})</>
-                ) : null}{" "}
-                plus the job text — not unsaved edits in this box. With{" "}
-                <code className="rounded bg-white/5 px-1">APP_GEMINI_API_KEY</code> set, Gemini
-                rewrites; otherwise the server uses a light heuristic.{" "}
-                <strong className="text-ink-300">Tailor (editor)</strong> only uses the JSON here
-                (guest / no account save).
-              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".tex,text/plain"
+                className="hidden"
+                onChange={handleResumeFile}
+              />
             </Panel>
 
-            <Panel title="4 · Updated resume & PDF" step={5}>
+            <Panel title="3 · Updated resume" step={3}>
               {matchScore != null && (
                 <div className="mb-4 flex items-center gap-4">
                   <div
@@ -794,43 +498,55 @@ export function App() {
               )}
 
               {tailored ? (
-                <details className="mb-4 rounded-xl border border-white/10 bg-surface-900/50">
-                  <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-ink-100">
-                    View tailored JSON
-                  </summary>
-                  <pre className="max-h-56 overflow-auto border-t border-white/10 p-4 font-mono text-[11px] leading-relaxed text-ink-200">
-                    {JSON.stringify(tailored, null, 2)}
-                  </pre>
-                </details>
+                <>
+                  <div className="mb-4 rounded-xl border border-white/10 bg-surface-900/50">
+                    <pre className="max-h-96 overflow-auto p-4 font-mono text-[13px] leading-relaxed text-ink-200">
+                      {tailored}
+                    </pre>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <CopyButton text={tailored} />
+                    <button
+                      type="button"
+                      className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20"
+                      title="Load the tailored resume back as your base resume for further tailoring"
+                      onClick={() => {
+                        setResumeText(tailored);
+                        setTailored(null);
+                        setMatchScore(null);
+                      }}
+                    >
+                      Use as base resume
+                    </button>
+                    <button
+                      type="button"
+                      disabled={pdfBusy}
+                      className="rounded-xl border border-brand/30 bg-brand/10 px-4 py-2 text-sm font-medium text-brand-glow transition hover:bg-brand/20 disabled:opacity-50"
+                      onClick={() => handlePreview(tailored)}
+                    >
+                      {pdfBusy ? "Compiling..." : "Preview PDF"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-ink-100 transition hover:bg-white/10"
+                      onClick={() => {
+                        setTailored(null);
+                        setMatchScore(null);
+                      }}
+                    >
+                      Clear output
+                    </button>
+                  </div>
+                </>
               ) : (
                 <p className="mb-4 text-sm text-ink-400">
-                  Tailor your resume to see the updated JSON and score.
+                  Tailor your resume to see the updated LaTeX code.
                 </p>
               )}
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="rounded-xl border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand-glow transition hover:bg-brand/20 disabled:opacity-50"
-                  onClick={handlePdf}
-                  disabled={pdfBusy || !canGeneratePdf}
-                >
-                  {pdfBusy ? "Building PDF…" : "Generate PDF"}
-                </button>
-                {downloadHref && (
-                  <a
-                    className="inline-flex items-center rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-ink-100 transition hover:bg-white/10"
-                    href={downloadHref}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Download {pdfInfo?.filename}
-                  </a>
-                )}
-              </div>
             </Panel>
 
-            <Panel title="LinkedIn Easy Apply (advanced)" step={6}>
+            
+            <Panel title="LinkedIn Easy Apply (advanced)" step={4}>
               <p className="mb-3 text-sm text-ink-300">
                 Requires Playwright browsers and often manual login. Provide a{" "}
                 <strong className="text-ink-200">local absolute path</strong> to the PDF on
@@ -871,9 +587,9 @@ export function App() {
           </div>
 
           <div className="flex flex-col gap-6">
-            <Panel title="3 · Job description (what you’re applying to)" step={3}>
+            <Panel title="2 · Job description (what you’re applying to)" step={2}>
               <p className="mb-3 text-sm text-ink-300">
-                After your resume is saved, paste the full posting here. We use it to update your
+                Paste the full posting here. We use it to update your
                 stored resume for this role (parse is optional — helps preview skills).
               </p>
               <textarea
@@ -890,91 +606,85 @@ export function App() {
                   onClick={handleParse}
                   disabled={parseBusy}
                 >
-                  {parseBusy ? "Parsing…" : "Parse job"}
+                  {parseBusy ? "Parsing…" : "Parse job (optional)"}
                 </button>
                 <button
                   type="button"
-                  className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-ink-100 transition hover:bg-white/10"
-                  onClick={loadSamples}
+                  className="rounded-xl bg-gradient-to-r from-accent/90 to-amber-500/90 px-4 py-2 text-sm font-bold text-surface-900 shadow-lg shadow-amber-500/15 transition hover:brightness-110 disabled:opacity-50"
+                  onClick={handleTailor}
+                  disabled={tailorBusy}
                 >
-                  Load demo files
+                  {tailorBusy ? "Tailoring…" : "Tailor resume"}
                 </button>
               </div>
-              <p className="mt-2 text-xs text-ink-500">
-                <strong className="text-ink-400">Load demo files</strong> pulls the bundled{" "}
-                <code className="rounded bg-white/5 px-1">sample_resume.json</code> (demo name “Alex
-                Rivera”) and a sample job — it replaces the editor. Only use it to try the app; put
-                your own JSON in the editor and click <strong>Save to account</strong> so optimize
-                uses <em>your</em> resume.
-              </p>
-            </Panel>
 
-            <Panel title="Parsed role (optional)" step={4}>
-              {!parsed ? (
-                <p className="text-sm text-ink-400">
-                  Run <strong className="text-ink-200">Parse job</strong> to see structured
-                  fields here.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-ink-400">
-                      Role
-                    </p>
-                    <p className="font-display text-lg font-semibold text-ink-50">
-                      {parsed.role}
-                    </p>
-                    <p className="mt-1 text-sm text-ink-300">
-                      Seniority: <Chip>{parsed.seniority}</Chip>
-                    </p>
-                  </div>
-                  <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-400">
-                      Must-have skills
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {parsed.must_have_skills.map((s, i) => (
-                        <Chip key={`${s}-${i}`}>{s}</Chip>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-400">
-                      Nice-to-have
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {parsed.good_to_have_skills.map((s, i) => (
-                        <Chip key={`${s}-${i}`}>{s}</Chip>
-                      ))}
-                    </div>
-                  </div>
-                  {parsed.responsibilities.length > 0 && (
+              {parsed && (
+                <div className="mt-6 rounded-xl border border-white/10 bg-surface-900/50 p-4">
+                  <h4 className="mb-3 font-display font-semibold text-ink-100">Parsed Output</h4>
+                  <div className="space-y-4">
                     <div>
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-400">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-400">
+                        Must-have Skills
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {parsed.must_have_skills?.map((s, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex rounded-full border border-pink-500/30 bg-pink-500/10 px-2 py-0.5 text-[11px] font-medium text-pink-200"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-400">
+                        Good-to-have Skills
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {parsed.good_to_have_skills?.map((s, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-200"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-400">
+                        Keywords
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {parsed.keywords?.map((k, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex rounded border border-white/5 bg-surface-950 px-1.5 py-0.5 text-[11px] text-ink-300"
+                          >
+                            {k}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-400">
                         Responsibilities
                       </p>
-                      <ul className="list-inside list-disc space-y-1 text-sm text-ink-200">
-                        {parsed.responsibilities.slice(0, 8).map((r) => (
-                          <li key={r.slice(0, 40)}>{r}</li>
+                      <ul className="ml-4 list-disc space-y-1 text-sm text-ink-200 marker:text-white/20">
+                        {parsed.responsibilities?.map((r, i) => (
+                          <li key={i}>{r}</li>
                         ))}
                       </ul>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
             </Panel>
           </div>
         </div>
-
-        <footer className="mt-12 text-center text-xs text-ink-400">
-          Development: run API on port 8000 and{" "}
-          <code className="rounded bg-white/5 px-1.5 py-0.5 text-ink-200">
-            npm run dev
-          </code>{" "}
-          in <code className="rounded bg-white/5 px-1.5 py-0.5">frontend/</code>. Production:
-          build the SPA and serve it with Uvicorn from the repo root.
-        </footer>
       </div>
+      <PdfViewerModal url={pdfUrl} onClose={closePdf} />
     </div>
   );
 }

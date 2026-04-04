@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.schemas.job import JobParseResult
-from app.schemas.resume import Resume
+
 
 
 class ParseJobRequest(BaseModel):
@@ -26,7 +26,7 @@ class ParseJobResponse(BaseModel):
 class TailorResumeRequest(BaseModel):
     """Base resume plus job context (pre-parsed or raw description)."""
 
-    base_resume: Resume
+    base_latex: str
     job: JobParseResult | None = None
     job_description: str | None = Field(
         default=None,
@@ -41,31 +41,12 @@ class TailorResumeRequest(BaseModel):
 class TailorResumeResponse(BaseModel):
     """Tailored resume and optional match score."""
 
-    resume: Resume
+    tailored_latex: str
     match_score: float | None = Field(
         default=None, ge=0.0, le=100.0, description="If job was known"
     )
 
 
-class GeneratePdfRequest(BaseModel):
-    """Resume payload and optional output filename."""
-
-    resume: Resume
-    filename: str | None = Field(
-        default=None,
-        description="PDF filename only (no path); stored under configured output dir.",
-    )
-
-
-class GeneratePdfResponse(BaseModel):
-    """Path to generated PDF and optional browser download URL."""
-
-    pdf_path: str
-    filename: str = Field(description="Basename of the PDF in the output directory.")
-    download_url: str | None = Field(
-        default=None,
-        description="Relative URL path to fetch the PDF (e.g. /api/files/…).",
-    )
 
 
 class ApplyRequest(BaseModel):
@@ -95,3 +76,9 @@ class HealthResponse(BaseModel):
 
     status: str
     version: str
+
+
+class RenderLatexRequest(BaseModel):
+    """Compile LaTeX to PDF."""
+
+    latex: str = Field(min_length=1, description="Full LaTeX source code")

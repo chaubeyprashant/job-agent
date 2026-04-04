@@ -1,20 +1,16 @@
 {
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://your-backend-app.onrender.com/api/$1"
+      "source": "/api/:path*",
+      "destination": "https://job-agent-mtwe.onrender.com/api/:path*"
     },
     {
       "source": "/docs",
-      "destination": "https://your-backend-app.onrender.com/docs"
+      "destination": "https://job-agent-mtwe.onrender.com/docs"
     },
     {
       "source": "/openapi.json",
-      "destination": "https://your-backend-app.onrender.com/openapi.json"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "https://job-agent-mtwe.onrender.com/openapi.json"
     }
   ]
 }
