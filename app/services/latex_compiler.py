@@ -41,7 +41,9 @@ class LatexCompilerService:
             tex_file = tmp_dir / "resume.tex"
             pdf_file = tmp_dir / "resume.pdf"
 
-            tex_file.write_text(latex_content, encoding="utf-8")
+            # CRLF (Windows) line endings break pdfTeX with ^^M / "Emergency stop" on early lines.
+            normalized = latex_content.replace("\r\n", "\n").replace("\r", "\n")
+            tex_file.write_text(normalized, encoding="utf-8", newline="\n")
             abs_tmp_dir = tmp_dir.resolve()
 
             return await self._compile_with_backend(tmp_dir, abs_tmp_dir, pdf_file)
