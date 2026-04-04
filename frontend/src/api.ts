@@ -2,6 +2,18 @@
  * Typed helpers for the FastAPI backend (`/api/*`).
  */
 
+/** API origin with no trailing slash. Empty uses same-origin `/api/*` (Vite dev proxy or Netlify rewrites). */
+export function getApiOrigin(): string {
+  return (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+}
+
+/** Absolute or same-origin path for API calls. */
+export function apiUrl(path: string): string {
+  const base = getApiOrigin();
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return base ? `${base}${p}` : p;
+}
+
 export interface JobParseResult {
   role: string;
   seniority: string;
@@ -43,13 +55,13 @@ async function parseJson(res: Response): Promise<unknown> {
 }
 
 export async function fetchHealth(): Promise<{ status: string; version: string }> {
-  const r = await fetch("/api/health");
+  const r = await fetch(apiUrl("/api/health"));
   return parseJson(r) as Promise<{ status: string; version: string }>;
 }
 
 
 export async function parseJob(description: string): Promise<{ job: JobParseResult }> {
-  const r = await fetch("/api/parse-job", {
+  const r = await fetch(apiUrl("/api/parse-job"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ description }),
@@ -63,7 +75,7 @@ export async function tailorResume(body: {
   job?: JobParseResult;
   force_heuristic?: boolean;
 }): Promise<{ tailored_latex: string; match_score: number | null }> {
-  const r = await fetch("/api/tailor-resume", {
+  const r = await fetch(apiUrl("/api/tailor-resume"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -81,7 +93,7 @@ export async function submitApply(
   message: string;
   detail?: Record<string, unknown>;
 }> {
-  const r = await fetch("/api/apply", {
+  const r = await fetch(apiUrl("/api/apply"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job_url: jobUrl, resume_path: resumePath }),
@@ -94,7 +106,7 @@ export async function submitApply(
 }
 
 export async function renderLatexToPdf(latex: string): Promise<Blob> {
-  const r = await fetch("/api/latex-to-pdf", {
+  const r = await fetch(apiUrl("/api/latex-to-pdf"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ latex }),

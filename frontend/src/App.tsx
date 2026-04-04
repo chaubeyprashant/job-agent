@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { JobParseResult } from "./api";
 import {
+  apiUrl,
   fetchHealth,
   parseJob,
   renderLatexToPdf,
@@ -190,7 +191,7 @@ export function App() {
           setApiOk("ok");
           setApiVersion(h.version);
         }
-        const cfgRes = await fetch("/api/config/paths");
+        const cfgRes = await fetch(apiUrl("/api/config/paths"));
         if (cfgRes.ok && !cancelled) {
           const cfg = (await cfgRes.json()) as {
             groq_configured?: boolean;

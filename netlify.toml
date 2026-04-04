@@ -1,10 +1,14 @@
 # Build the Vite app from ./frontend (paths below are relative to [build].base).
+#
+# For long requests (e.g. LaTeX→PDF), set Netlify env VITE_API_BASE_URL to your Render
+# origin (https://….onrender.com) so the browser calls Render directly. Netlify’s proxy
+# to external URLs times out at ~26s and returns 504.
 [build]
   base = "frontend"
   command = "npm run build"
   publish = "dist"
 
-# Proxy API requests to the Render backend
+# Proxy API requests to the Render backend (optional if VITE_API_BASE_URL is set at build)
 [[redirects]]
   from = "/api/*"
   to = "https://job-agent-mtwe.onrender.com/api/:splat"
