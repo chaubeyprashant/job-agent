@@ -59,7 +59,6 @@ export async function fetchHealth(): Promise<{ status: string; version: string }
   return parseJson(r) as Promise<{ status: string; version: string }>;
 }
 
-
 export async function parseJob(description: string): Promise<{ job: JobParseResult }> {
   const r = await fetch(apiUrl("/api/parse-job"), {
     method: "POST",
@@ -83,48 +82,27 @@ export async function tailorResume(body: {
   return parseJson(r) as Promise<{ tailored_latex: string; match_score: number | null }>;
 }
 
+/**
+ * Upload a PDF resume + job description, receive a tailored PDF back.
+ */
+export async function uploadAndTailor(
+  file: File,
+  jobDescription: string,
+): Promise<Blob> {
+  const form = new FormData();
+  form.append("resume", file);
+  form.append("job_description", jobDescription);
 
-
-export async function submitApply(
-  jobUrl: string,
-  resumePath: string
-): Promise<{
-  success: boolean;
-  message: string;
-  detail?: Record<string, unknown>;
-}> {
-  const r = await fetch(apiUrl("/api/apply"), {
+  const r = await fetch(apiUrl("/api/upload-and-tailor"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_url: jobUrl, resume_path: resumePath }),
+    body: form,
   });
-  return parseJson(r) as Promise<{
-    success: boolean;
-    message: string;
-    detail?: Record<string, unknown>;
-  }>;
-}
 
-export async function renderLatexToPdf(latex: string): Promise<Blob> {
-  const r = await fetch(apiUrl("/api/latex-to-pdf"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ latex }),
-  });
-  const ct = (r.headers.get("content-type") || "").toLowerCase();
   if (!r.ok) {
     const text = await r.text();
     const detail = formatApiErrorBody(text) || r.statusText;
     throw new Error(detail);
   }
-  if (ct.includes("text/html")) {
-    const text = await r.text();
-    throw new Error(
-      text.includes("<!DOCTYPE")
-        ? "Got the app HTML instead of a PDF. Check Netlify /api/* proxy rules and redeploy."
-        : "Server returned HTML instead of a PDF."
-    );
-  }
-  const buf = await r.arrayBuffer();
-  return new Blob([buf], { type: "application/pdf" });
+
+  return r.blob();
 }
